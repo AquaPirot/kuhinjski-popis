@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { collection, getDocs, addDoc } from 'firebase/firestore';
+import { collection, getDocs, addDoc, deleteDoc, doc } from 'firebase/firestore';
 import { db } from '../utils/firebase';
 import AddItemModal from './AddItemModal';
+import EditItemModal from './EditItemModal';
 import { generatePDF } from '../utils/pdfGenerator';
-import { Plus } from 'lucide-react';
+import { Plus, Edit3, Trash2, Check, X } from 'lucide-react';
 import Link from 'next/link';
 
 export default function KuhinjskiPopis() {
@@ -14,25 +15,44 @@ export default function KuhinjskiPopis() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingItem, setEditingItem] = useState(null);
+  const [selectedItems, setSelectedItems] = useState(new Set());
+  const [deleteMode, setDeleteMode] = useState(false);
 
   // kontrola za expand/collapse
   const [expandedCategories, setExpandedCategories] = useState({});
 
+  const fetchItems = async () => {
+    const snapshot = await getDocs(collection(db, 'namirnice'));
+    const itemList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    
+    // Ukloni duplikate na osnovu naziva
+    const uniqueItems = itemList.reduce((acc, current) => {
+      const exists = acc.find(item => 
+        item.name.toLowerCase().trim() === current.name.toLowerCase().trim()
+      );
+      if (!exists) {
+        acc.push(current);
+      } else {
+        console.warn(`Duplikat pronađen: ${current.name} (ID: ${current.id})`);
+      }
+      return acc;
+    }, []);
+    
+    setItems(uniqueItems);
+
+    // inicijalno otvori sve kategorije
+    const initialExpanded = {};
+    categoryOrder.forEach(cat => {
+      initialExpanded[cat] = true;
+    });
+    setExpandedCategories(initialExpanded);
+
+    setLoading(false);
+  };
+
   useEffect(() => {
-    const fetchItems = async () => {
-      const snapshot = await getDocs(collection(db, 'namirnice'));
-      const itemList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-      setItems(itemList);
-
-      // inicijalno otvori sve kategorije
-      const initialExpanded = {};
-      categoryOrder.forEach(cat => {
-        initialExpanded[cat] = true;
-      });
-      setExpandedCategories(initialExpanded);
-
-      setLoading(false);
-    };
     fetchItems();
   }, []);
 
@@ -86,6 +106,63 @@ export default function KuhinjskiPopis() {
       ...prev,
       [category]: !prev[category]
     }));
+  };
+
+  const handleEditItem = (item) => {
+    setEditingItem(item);
+    setShowEditModal(true);
+  };
+
+  const handleCloseEditModal = () => {
+    setShowEditModal(false);
+    setEditingItem(null);
+  };
+
+  const toggleDeleteMode = () => {
+    setDeleteMode(!deleteMode);
+    setSelectedItems(new Set());
+  };
+
+  const toggleItemSelection = (itemId) => {
+    const newSelected = new Set(selectedItems);
+    if (newSelected.has(itemId)) {
+      newSelected.delete(itemId);
+    } else {
+      newSelected.add(itemId);
+    }
+    setSelectedItems(newSelected);
+  };
+
+  const handleDeleteSelected = async () => {
+    if (selectedItems.size === 0) {
+      alert('Nema odabranih artikala za brisanje.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Da li ste sigurni da želite da obrišete ${selectedItems.size} artikal(a)? Ova akcija se ne može poništiti.`
+    );
+
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      const deletePromises = Array.from(selectedItems).map(itemId => 
+        deleteDoc(doc(db, 'namirnice', itemId))
+      );
+      
+      await Promise.all(deletePromises);
+      
+      alert(`Uspešno obrisano ${selectedItems.size} artikal(a)!`);
+      setSelectedItems(new Set());
+      setDeleteMode(false);
+      await fetchItems(); // Refresh lista
+    } catch (error) {
+      alert('Greška pri brisanju: ' + error.message);
+      console.error('Error deleting items:', error);
+    } finally {
+      setSaving(false);
+    }
   };
 
   // sortiranje kategorija po tvom redosledu
@@ -142,12 +219,44 @@ export default function KuhinjskiPopis() {
         />
       </div>
 
-      <button
-        onClick={() => setShowAddModal(true)}
-        className="bg-blue-500 text-white p-2 rounded mb-4"
-      >
-        + Dodaj novu namirnicu
-      </button>
+      <div className="mb-4 flex gap-2 flex-wrap">
+        <button
+          onClick={() => setShowAddModal(true)}
+          className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded transition-colors flex items-center gap-2"
+        >
+          <Plus className="w-4 h-4" /> Dodaj namirnicu
+        </button>
+        
+        <button
+          onClick={toggleDeleteMode}
+          className={`p-2 rounded transition-colors flex items-center gap-2 ${
+            deleteMode 
+              ? 'bg-gray-500 hover:bg-gray-600 text-white' 
+              : 'bg-red-500 hover:bg-red-600 text-white'
+          }`}
+        >
+          {deleteMode ? (
+            <>
+              <X className="w-4 h-4" /> Otkaži brisanje
+            </>
+          ) : (
+            <>
+              <Trash2 className="w-4 h-4" /> Obriši artikle
+            </>
+          )}
+        </button>
+
+        {deleteMode && selectedItems.size > 0 && (
+          <button
+            onClick={handleDeleteSelected}
+            disabled={saving}
+            className="bg-red-600 hover:bg-red-700 text-white p-2 rounded transition-colors flex items-center gap-2"
+          >
+            <Trash2 className="w-4 h-4" />
+            {saving ? 'Brišem...' : `Obriši (${selectedItems.size})`}
+          </button>
+        )}
+      </div>
 
       <div className="space-y-4">
         {categoryOrder.map(category => (
@@ -164,19 +273,54 @@ export default function KuhinjskiPopis() {
               {expandedCategories[category] && (
                 <div className="p-2 space-y-2">
                   {groupedItems[category].map(item => (
-                    <div key={item.id} className="flex justify-between items-center border p-2 rounded bg-white">
-                      <div>
-                        <p className="font-medium">{item.name}</p>
-                        <p className="text-sm text-gray-500">{item.unit}</p>
+                    <div 
+                      key={`${item.id}-${item.name}`} 
+                      className={`flex justify-between items-center border p-2 rounded transition-colors ${
+                        selectedItems.has(item.id) 
+                          ? 'bg-red-100 border-red-300' 
+                          : 'bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 flex-1">
+                        {deleteMode && (
+                          <input
+                            type="checkbox"
+                            checked={selectedItems.has(item.id)}
+                            onChange={() => toggleItemSelection(item.id)}
+                            className="w-4 h-4 text-red-600 rounded focus:ring-red-500"
+                          />
+                        )}
+                        
+                        <div className="flex-1">
+                          <div className="flex justify-between items-center">
+                            <div>
+                              <p className="font-medium">{item.name}</p>
+                              <p className="text-sm text-gray-500">{item.unit}</p>
+                            </div>
+                            
+                            {!deleteMode && (
+                              <button
+                                onClick={() => handleEditItem(item)}
+                                className="text-blue-500 hover:text-blue-700 p-1"
+                                title="Uredi artikal"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {!deleteMode && (
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={quantities[item.id] || ''}
+                            onChange={(e) => handleQuantityChange(item.id, e.target.value)}
+                            className="border p-1 rounded w-24 text-right ml-2"
+                          />
+                        )}
                       </div>
-                      <input
-                        type="number"
-                        step="0.01"
-                        min="0"
-                        value={quantities[item.id] || ''}
-                        onChange={(e) => handleQuantityChange(item.id, e.target.value)}
-                        className="border p-1 rounded w-24 text-right"
-                      />
                     </div>
                   ))}
                 </div>
@@ -189,8 +333,12 @@ export default function KuhinjskiPopis() {
       <div className="flex gap-2 mt-4">
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="bg-green-500 text-white p-3 rounded w-1/2"
+          disabled={saving || deleteMode}
+          className={`p-3 rounded w-1/2 transition-colors ${
+            deleteMode 
+              ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+              : 'bg-green-500 hover:bg-green-600 text-white'
+          }`}
         >
           {saving ? 'Čuvanje...' : 'Sačuvaj Popis'}
         </button>
@@ -203,7 +351,12 @@ export default function KuhinjskiPopis() {
               quantity: parseFloat(quantities[item.id]) || 0
             }))
           })}
-          className="bg-purple-500 text-white p-3 rounded w-1/2"
+          disabled={deleteMode}
+          className={`p-3 rounded w-1/2 transition-colors ${
+            deleteMode 
+              ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+              : 'bg-purple-500 hover:bg-purple-600 text-white'
+          }`}
         >
           Preuzmi PDF izveštaj
         </button>
@@ -214,6 +367,16 @@ export default function KuhinjskiPopis() {
           show={showAddModal}
           onClose={() => setShowAddModal(false)}
           categories={[...new Set(items.map(i => i.category))]}
+        />
+      )}
+
+      {showEditModal && (
+        <EditItemModal
+          show={showEditModal}
+          onClose={handleCloseEditModal}
+          item={editingItem}
+          categories={[...new Set(items.map(i => i.category))]}
+          onUpdate={fetchItems}
         />
       )}
     </div>
