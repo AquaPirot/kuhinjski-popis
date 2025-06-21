@@ -1,4 +1,4 @@
-// src/utils/database.js - Production Ready with Environment Variables
+// src/utils/database.js - Production Ready with Fixes
 import mysql from 'mysql2/promise';
 
 const dbConfig = {
@@ -11,12 +11,10 @@ const dbConfig = {
   connectTimeout: 60000,
   acquireTimeout: 60000,
   timeout: 60000,
-  // Dodatne opcije za stabilnost
   charset: 'utf8mb4',
   timezone: '+00:00'
 };
 
-// Connection pool za bolje performanse
 let pool;
 
 const createPool = () => {
@@ -29,7 +27,6 @@ const createPool = () => {
       acquireTimeout: 60000,
       timeout: 60000,
       reconnect: true,
-      // Production optimizacije
       idleTimeout: 300000,
       maxIdle: 10,
       enableKeepAlive: true,
@@ -39,10 +36,9 @@ const createPool = () => {
   return pool;
 };
 
-// Glavna funkcija za izvršavanje upita
 export const executeQuery = async (query, params = []) => {
   const connection = createPool();
-  
+
   try {
     const [results] = await connection.execute(query, params);
     return results;
@@ -54,7 +50,6 @@ export const executeQuery = async (query, params = []) => {
   }
 };
 
-// Test konekcije
 export const testConnection = async () => {
   try {
     const results = await executeQuery('SELECT 1 as test, NOW() as server_time');
@@ -66,7 +61,6 @@ export const testConnection = async () => {
   }
 };
 
-// Helper funkcije za česte operacije
 export const insertItem = async (name, category, unit) => {
   const query = 'INSERT INTO namirnice (name, category, unit) VALUES (?, ?, ?)';
   const result = await executeQuery(query, [name, category, unit]);
@@ -98,20 +92,27 @@ export const deleteItems = async (ids) => {
 export const savePopis = async (datum, sastavio, items) => {
   const query = 'INSERT INTO popisi (datum, sastavio, items_json) VALUES (?, ?, ?)';
   const itemsJson = JSON.stringify(items);
+
+  console.log('💾 Upisujem popis:', { datum, sastavio, itemsJson });
+
   const result = await executeQuery(query, [datum, sastavio, itemsJson]);
+
+  console.log('✅ Popis sačuvan sa ID:', result.insertId);
+
   return result.insertId;
 };
 
 export const getAllPopisi = async () => {
-  const query = 'SELECT * FROM popisi ORDER BY datum DESC, timestamp DESC';
+  const query = 'SELECT * FROM popisi ORDER BY datum DESC, id DESC';
   const results = await executeQuery(query);
-  
-  // Parse JSON strings back to objects with error handling
+
   return results.map(popis => {
     try {
       return {
         ...popis,
-        items: JSON.parse(popis.items_json)
+        items: typeof popis.items_json === 'string'
+          ? JSON.parse(popis.items_json)
+          : []
       };
     } catch (error) {
       console.error('Error parsing items JSON for popis:', popis.id, error);
@@ -128,7 +129,6 @@ export const deletePopis = async (id) => {
   return await executeQuery(query, [id]);
 };
 
-// Cleanup funkcija za graceful shutdown
 export const closeConnections = async () => {
   if (pool) {
     await pool.end();

@@ -1,5 +1,4 @@
-# U root folderu kreiraj .gitignore
-echo "# Dependencies
+# Dependencies
 node_modules/
 .pnp
 .pnp.js
@@ -36,4 +35,4 @@ yarn-error.log*
 Thumbs.db
 
 # Logs
-*.log" > .gitignore
+*.log
