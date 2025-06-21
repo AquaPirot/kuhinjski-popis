@@ -1,4 +1,4 @@
-// src/components/KuhinjskiPopis.js - Practical Version
+// src/components/KuhinjskiPopis.js - Fixed Responsive with localStorage
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, 
@@ -21,7 +21,8 @@ import {
   User,
   Save,
   FileText,
-  Edit3
+  Edit3,
+  Menu
 } from 'lucide-react';
 import AddItemModal from './AddItemModal';
 import EditItemModal from './EditItemModal';
@@ -49,13 +50,62 @@ export default function KuhinjskiPopis() {
   const [showEditModal, setShowEditModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [sastavio, setSastavio] = useState('');
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Kategorije koje postoje u bazi
   const [categories, setCategories] = useState([]);
 
+  // localStorage keys
+  const STORAGE_KEYS = {
+    selectedItems: 'kuhinja_selected_items',
+    sastavio: 'kuhinja_sastavio',
+    currentView: 'kuhinja_current_view',
+    selectedCategory: 'kuhinja_selected_category'
+  };
+
   useEffect(() => {
     fetchItems();
+    loadFromStorage();
   }, []);
+
+  // Čuvanje u localStorage kada se promeni state
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.selectedItems, JSON.stringify(selectedItems));
+    }
+  }, [selectedItems]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(STORAGE_KEYS.sastavio, sastavio);
+    }
+  }, [sastavio]);
+
+  const loadFromStorage = () => {
+    if (typeof window !== 'undefined') {
+      try {
+        const savedItems = localStorage.getItem(STORAGE_KEYS.selectedItems);
+        const savedSastavio = localStorage.getItem(STORAGE_KEYS.sastavio);
+        
+        if (savedItems) {
+          setSelectedItems(JSON.parse(savedItems));
+        }
+        if (savedSastavio) {
+          setSastavio(savedSastavio);
+        }
+      } catch (error) {
+        console.error('Error loading from localStorage:', error);
+      }
+    }
+  };
+
+  const clearStorage = () => {
+    if (typeof window !== 'undefined') {
+      Object.values(STORAGE_KEYS).forEach(key => {
+        localStorage.removeItem(key);
+      });
+    }
+  };
 
   const fetchItems = async () => {
     try {
@@ -149,8 +199,10 @@ export default function KuhinjskiPopis() {
       
       if (result.success) {
         alert('Popis uspešno sačuvan!');
+        // Očisti state i localStorage
         setSelectedItems({});
         setSastavio('');
+        clearStorage();
         setCurrentView('categories');
         setSelectedCategory(null);
       } else {
@@ -166,56 +218,91 @@ export default function KuhinjskiPopis() {
     setCurrentView('categories');
     setSelectedCategory(null);
     setSearchTerm('');
+    setShowMobileMenu(false);
   };
 
-  // Category View - Kompaktna lista kategorija
+  // Responsive header component
+  const Header = ({ title, subtitle, children }) => (
+    <div className="bg-white shadow-lg sticky top-0 z-40">
+      <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6">
+        <div className="flex justify-between items-center py-3 sm:py-4">
+          <div className="flex items-center space-x-2 sm:space-x-3 min-w-0 flex-1">
+            {title}
+          </div>
+          
+          {/* Desktop buttons */}
+          <div className="hidden sm:flex space-x-2">
+            {children}
+          </div>
+          
+          {/* Mobile menu button */}
+          <div className="sm:hidden">
+            <button
+              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              className="p-2 text-gray-600 hover:bg-gray-100 rounded-lg"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+        
+        {/* Mobile menu */}
+        {showMobileMenu && (
+          <div className="sm:hidden border-t border-gray-200 py-3 space-y-2">
+            {children}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // Selected items count
+  const selectedCount = Object.keys(selectedItems).length;
+  const totalQuantity = Object.values(selectedItems).reduce((sum, item) => sum + (item?.quantity || 0), 0);
+
+  // Category View - Responsive lista kategorija
   if (currentView === 'categories') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Header */}
-        <div className="bg-white shadow-lg">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex justify-between items-center py-4">
-              <div className="flex items-center space-x-3">
-                <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                  <ChefHat className="w-6 h-6 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-2xl font-bold text-gray-900">Kuhinjski Popis</h1>
-                  <p className="text-sm text-gray-500">Izaberite kategoriju namirnica</p>
-                </div>
+        <Header
+          title={
+            <>
+              <div className="w-8 h-8 sm:w-10 sm:h-10 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                <ChefHat className="w-4 h-4 sm:w-6 sm:h-6 text-white" />
               </div>
-              
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-md"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Dodaj</span>
-                </button>
-                
-                <button
-                  onClick={() => setCurrentView('history')}
-                  className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-md"
-                >
-                  <History className="w-4 h-4" />
-                  <span className="hidden sm:inline">Istorija</span>
-                </button>
+              <div className="min-w-0">
+                <h1 className="text-lg sm:text-2xl font-bold text-gray-900 truncate">Kuhinjski Popis</h1>
+                <p className="text-xs sm:text-sm text-gray-500 hidden sm:block">Izaberite kategoriju namirnica</p>
               </div>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-green-500 hover:bg-green-600 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-md text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Dodaj</span>
+          </button>
+          
+          <button
+            onClick={() => setCurrentView('history')}
+            className="bg-purple-500 hover:bg-purple-600 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors shadow-md text-sm"
+          >
+            <History className="w-4 h-4" />
+            <span>Istorija</span>
+          </button>
+        </Header>
 
-        {/* Kompaktna lista kategorija */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Categories Grid/List - Responsive */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-4 sm:py-6 lg:py-8">
           {loading ? (
             <div className="text-center py-12">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
-              <p className="mt-4 text-gray-600">Učitavanje kategorija...</p>
+              <div className="animate-spin rounded-full h-8 w-8 sm:h-12 sm:w-12 border-b-2 border-blue-500 mx-auto"></div>
+              <p className="mt-4 text-gray-600 text-sm sm:text-base">Učitavanje kategorija...</p>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 lg:gap-6">
               {categories.map(category => {
                 const IconComponent = CATEGORY_ICONS[category] || Package;
                 const itemCount = itemsByCategory[category]?.length || 0;
@@ -226,25 +313,26 @@ export default function KuhinjskiPopis() {
                     onClick={() => {
                       setSelectedCategory(category);
                       setCurrentView('items');
+                      setShowMobileMenu(false);
                     }}
-                    className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer transform hover:-translate-y-0.5 p-4"
+                    className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-200 cursor-pointer transform hover:-translate-y-0.5 p-3 sm:p-4"
                   >
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center space-x-4">
-                        <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center">
-                          <IconComponent className="w-6 h-6 text-white" />
+                      <div className="flex items-center space-x-3 sm:space-x-4 min-w-0 flex-1">
+                        <div className="w-10 h-10 sm:w-12 sm:h-12 bg-gradient-to-r from-blue-500 to-indigo-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <IconComponent className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
                         </div>
-                        <div>
-                          <h3 className="font-semibold text-gray-900 text-lg">{category}</h3>
-                          <p className="text-gray-500 text-sm">
+                        <div className="min-w-0 flex-1">
+                          <h3 className="font-semibold text-gray-900 text-sm sm:text-lg truncate">{category}</h3>
+                          <p className="text-gray-500 text-xs sm:text-sm">
                             {itemCount} {itemCount === 1 ? 'artikal' : itemCount < 5 ? 'artikla' : 'artikala'}
                           </p>
                         </div>
                       </div>
                       
-                      <div className="text-right">
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                          <span className="text-sm font-bold text-gray-600">{itemCount}</span>
+                      <div className="flex-shrink-0">
+                        <div className="w-6 h-6 sm:w-8 sm:h-8 bg-gray-100 rounded-full flex items-center justify-center">
+                          <span className="text-xs sm:text-sm font-bold text-gray-600">{itemCount}</span>
                         </div>
                       </div>
                     </div>
@@ -255,37 +343,70 @@ export default function KuhinjskiPopis() {
           )}
         </div>
 
-        {/* Selected Items Summary - Sticky na dnu */}
-        {Object.keys(selectedItems).length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-blue-500 shadow-lg p-4">
-            <div className="max-w-4xl mx-auto flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <ShoppingCart className="w-6 h-6 text-blue-500" />
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {Object.keys(selectedItems).length} odabranih artikala
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Ukupno: {Object.values(selectedItems).reduce((sum, item) => sum + (item?.quantity || 0), 0).toFixed(2)}
-                  </p>
+        {/* Selected Items Summary - Responsive sticky bottom */}
+        {selectedCount > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-blue-500 shadow-lg p-3 sm:p-4 z-30">
+            <div className="max-w-7xl mx-auto">
+              {/* Mobile layout */}
+              <div className="sm:hidden space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <ShoppingCart className="w-5 h-5 text-blue-500" />
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {selectedCount} odabranih
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Ukupno: {totalQuantity.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={saveList}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    Sačuvaj
+                  </button>
                 </div>
-              </div>
-              
-              <div className="flex items-center space-x-3">
                 <input
                   type="text"
-                  placeholder="Ko sastavlja?"
+                  placeholder="Ko sastavlja popis?"
                   value={sastavio}
                   onChange={(e) => setSastavio(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                <button
-                  onClick={saveList}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Sačuvaj popis</span>
-                </button>
+              </div>
+              
+              {/* Desktop layout */}
+              <div className="hidden sm:flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <ShoppingCart className="w-6 h-6 text-blue-500" />
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {selectedCount} odabranih artikala
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Ukupno: {totalQuantity.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="text"
+                    placeholder="Ko sastavlja?"
+                    value={sastavio}
+                    onChange={(e) => setSastavio(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={saveList}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Sačuvaj popis</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -302,65 +423,60 @@ export default function KuhinjskiPopis() {
     );
   }
 
-  // Items View - Prikaz artikala po kategoriji sa direktnim unosom količine
+  // Items View - Responsive prikaz artikala
   if (currentView === 'items') {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100">
-        {/* Header */}
-        <div className="bg-white shadow-lg">
-          <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
-            <div className="flex items-center justify-between py-4">
-              <div className="flex items-center space-x-3">
-                <button
-                  onClick={goBackToCategories}
-                  className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
-                >
-                  <ArrowLeft className="w-5 h-5 text-gray-600" />
-                </button>
-                
-                <div className="flex items-center space-x-3">
-                  {CATEGORY_ICONS[selectedCategory] && 
-                    React.createElement(CATEGORY_ICONS[selectedCategory], { 
-                      className: "w-8 h-8 text-blue-500" 
-                    })
-                  }
-                  <div>
-                    <h1 className="text-xl font-bold text-gray-900">{selectedCategory}</h1>
-                    <p className="text-sm text-gray-500">{filteredItems.length} artikala</p>
-                  </div>
+        <Header
+          title={
+            <>
+              <button
+                onClick={goBackToCategories}
+                className="p-1 sm:p-2 hover:bg-gray-100 rounded-lg transition-colors flex-shrink-0"
+              >
+                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 text-gray-600" />
+              </button>
+              
+              <div className="flex items-center space-x-2 sm:space-x-3 min-w-0">
+                {CATEGORY_ICONS[selectedCategory] && 
+                  React.createElement(CATEGORY_ICONS[selectedCategory], { 
+                    className: "w-6 h-6 sm:w-8 sm:h-8 text-blue-500 flex-shrink-0" 
+                  })
+                }
+                <div className="min-w-0">
+                  <h1 className="text-lg sm:text-xl font-bold text-gray-900 truncate">{selectedCategory}</h1>
+                  <p className="text-xs sm:text-sm text-gray-500">{filteredItems.length} artikala</p>
                 </div>
               </div>
+            </>
+          }
+        >
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="bg-green-500 hover:bg-green-600 text-white px-3 sm:px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors text-sm"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Dodaj</span>
+          </button>
+        </Header>
 
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => setShowAddModal(true)}
-                  className="bg-green-500 hover:bg-green-600 text-white px-3 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="hidden sm:inline">Dodaj</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Search */}
-            <div className="pb-4">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
-                <input
-                  type="text"
-                  placeholder="Pretraži artikle..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                />
-              </div>
-            </div>
+        {/* Search - Responsive */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-3 sm:py-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+            <input
+              type="text"
+              placeholder="Pretraži artikle..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full pl-10 pr-4 py-2 sm:py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm sm:text-base"
+            />
           </div>
         </div>
 
-        {/* Items List - Kompaktni prikaz sa direktnim unosom */}
-        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-32">
-          <div className="space-y-3">
+        {/* Items List - Responsive */}
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 pb-32">
+          <div className="space-y-2 sm:space-y-3">
             {filteredItems.map(item => {
               const isSelected = !!selectedItems[item.id];
               const quantity = selectedItems[item.id]?.quantity || '';
@@ -368,22 +484,64 @@ export default function KuhinjskiPopis() {
               return (
                 <div
                   key={item.id}
-                  className={`bg-white rounded-lg shadow-md p-4 transition-all duration-200 ${
+                  className={`bg-white rounded-lg shadow-md p-3 sm:p-4 transition-all duration-200 ${
                     isSelected 
                       ? 'ring-2 ring-blue-500 bg-blue-50' 
                       : 'hover:shadow-lg'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <div className="flex-1">
+                  {/* Mobile layout */}
+                  <div className="sm:hidden space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1 min-w-0">
+                        <h3 className="font-medium text-gray-900 text-sm truncate">{item.name}</h3>
+                        <p className="text-xs text-gray-500">Jedinica: {item.unit}</p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setEditingItem(item);
+                          setShowEditModal(true);
+                        }}
+                        className="text-gray-400 hover:text-blue-600 p-1 rounded transition-colors flex-shrink-0"
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </button>
+                    </div>
+                    
+                    <div className="flex items-center space-x-2">
+                      <label className="text-xs text-gray-600 flex-shrink-0">Količina:</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        value={quantity}
+                        onChange={(e) => updateQuantity(item.id, e.target.value)}
+                        className="flex-1 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center text-sm"
+                      />
+                      <span className="text-xs text-gray-500 flex-shrink-0">{item.unit}</span>
+                      {isSelected && (
+                        <button
+                          onClick={() => updateQuantity(item.id, 0)}
+                          className="text-red-500 hover:text-red-700 p-1 rounded transition-colors flex-shrink-0"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  
+                  {/* Desktop layout */}
+                  <div className="hidden sm:flex items-center justify-between">
+                    <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between mb-2">
-                        <h3 className="font-medium text-gray-900 text-lg">{item.name}</h3>
+                        <h3 className="font-medium text-gray-900 text-base lg:text-lg truncate">{item.name}</h3>
                         <button
                           onClick={() => {
                             setEditingItem(item);
                             setShowEditModal(true);
                           }}
-                          className="text-gray-400 hover:text-blue-600 p-1 rounded transition-colors"
+                          className="text-gray-400 hover:text-blue-600 p-1 rounded transition-colors flex-shrink-0"
                         >
                           <Edit3 className="w-4 h-4" />
                         </button>
@@ -393,7 +551,7 @@ export default function KuhinjskiPopis() {
                     
                     <div className="flex items-center space-x-3 ml-4">
                       <div className="flex items-center space-x-2">
-                        <label className="text-sm text-gray-600">Količina:</label>
+                        <label className="text-sm text-gray-600 whitespace-nowrap">Količina:</label>
                         <input
                           type="number"
                           step="0.01"
@@ -401,7 +559,7 @@ export default function KuhinjskiPopis() {
                           placeholder="0.00"
                           value={quantity}
                           onChange={(e) => updateQuantity(item.id, e.target.value)}
-                          className="w-20 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
+                          className="w-20 lg:w-24 px-2 py-1 border border-gray-300 rounded focus:ring-2 focus:ring-blue-500 focus:border-transparent text-center"
                         />
                         <span className="text-sm text-gray-500">{item.unit}</span>
                       </div>
@@ -422,37 +580,70 @@ export default function KuhinjskiPopis() {
           </div>
         </div>
 
-        {/* Selected Items Summary - Sticky na dnu */}
-        {Object.keys(selectedItems).length > 0 && (
-          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-blue-500 shadow-lg p-4">
-            <div className="max-w-4xl mx-auto flex items-center justify-between">
-              <div className="flex items-center space-x-4">
-                <ShoppingCart className="w-6 h-6 text-blue-500" />
-                <div>
-                  <p className="font-semibold text-gray-900">
-                    {Object.keys(selectedItems).length} odabranih artikala
-                  </p>
-                  <p className="text-sm text-gray-500">
-                    Ukupno: {Object.values(selectedItems).reduce((sum, item) => sum + (item?.quantity || 0), 0).toFixed(2)}
-                  </p>
+        {/* Selected Items Summary - Responsive sticky bottom */}
+        {selectedCount > 0 && (
+          <div className="fixed bottom-0 left-0 right-0 bg-white border-t-2 border-blue-500 shadow-lg p-3 sm:p-4 z-30">
+            <div className="max-w-7xl mx-auto">
+              {/* Mobile layout */}
+              <div className="sm:hidden space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <ShoppingCart className="w-5 h-5 text-blue-500" />
+                    <div>
+                      <p className="font-semibold text-gray-900 text-sm">
+                        {selectedCount} odabranih
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Ukupno: {totalQuantity.toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={saveList}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                  >
+                    Sačuvaj
+                  </button>
                 </div>
-              </div>
-              
-              <div className="flex items-center space-x-3">
                 <input
                   type="text"
-                  placeholder="Ko sastavlja?"
+                  placeholder="Ko sastavlja popis?"
                   value={sastavio}
                   onChange={(e) => setSastavio(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                <button
-                  onClick={saveList}
-                  className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
-                >
-                  <Save className="w-4 h-4" />
-                  <span>Sačuvaj</span>
-                </button>
+              </div>
+              
+              {/* Desktop layout */}
+              <div className="hidden sm:flex items-center justify-between">
+                <div className="flex items-center space-x-4">
+                  <ShoppingCart className="w-6 h-6 text-blue-500" />
+                  <div>
+                    <p className="font-semibold text-gray-900">
+                      {selectedCount} odabranih artikala
+                    </p>
+                    <p className="text-sm text-gray-500">
+                      Ukupno: {totalQuantity.toFixed(2)}
+                    </p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="text"
+                    placeholder="Ko sastavlja?"
+                    value={sastavio}
+                    onChange={(e) => setSastavio(e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  />
+                  <button
+                    onClick={saveList}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                  >
+                    <Save className="w-4 h-4" />
+                    <span>Sačuvaj</span>
+                  </button>
+                </div>
               </div>
             </div>
           </div>
