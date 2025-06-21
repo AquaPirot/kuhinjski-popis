@@ -1,4 +1,4 @@
-// src/components/KuhinjskiPopis.js - Fixed Responsive with localStorage
+// src/components/KuhinjskiPopis.js - Complete Fixed Responsive Version
 import React, { useState, useEffect } from 'react';
 import { 
   ShoppingCart, 
@@ -55,57 +55,9 @@ export default function KuhinjskiPopis() {
   // Kategorije koje postoje u bazi
   const [categories, setCategories] = useState([]);
 
-  // localStorage keys
-  const STORAGE_KEYS = {
-    selectedItems: 'kuhinja_selected_items',
-    sastavio: 'kuhinja_sastavio',
-    currentView: 'kuhinja_current_view',
-    selectedCategory: 'kuhinja_selected_category'
-  };
-
   useEffect(() => {
     fetchItems();
-    loadFromStorage();
   }, []);
-
-  // Čuvanje u localStorage kada se promeni state
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEYS.selectedItems, JSON.stringify(selectedItems));
-    }
-  }, [selectedItems]);
-
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(STORAGE_KEYS.sastavio, sastavio);
-    }
-  }, [sastavio]);
-
-  const loadFromStorage = () => {
-    if (typeof window !== 'undefined') {
-      try {
-        const savedItems = localStorage.getItem(STORAGE_KEYS.selectedItems);
-        const savedSastavio = localStorage.getItem(STORAGE_KEYS.sastavio);
-        
-        if (savedItems) {
-          setSelectedItems(JSON.parse(savedItems));
-        }
-        if (savedSastavio) {
-          setSastavio(savedSastavio);
-        }
-      } catch (error) {
-        console.error('Error loading from localStorage:', error);
-      }
-    }
-  };
-
-  const clearStorage = () => {
-    if (typeof window !== 'undefined') {
-      Object.values(STORAGE_KEYS).forEach(key => {
-        localStorage.removeItem(key);
-      });
-    }
-  };
 
   const fetchItems = async () => {
     try {
@@ -172,6 +124,10 @@ export default function KuhinjskiPopis() {
       return;
     }
 
+    // Potvrda pre čuvanja
+    const confirmSave = confirm(`Da li želite da sačuvate popis sa ${selectedItemsList.length} artikala?\n\nSastavio: ${sastavio.trim()}`);
+    if (!confirmSave) return;
+
     // Srpski datum i vreme
     const now = new Date();
     const serbianDateTime = now.toLocaleString('sr-RS', {
@@ -199,10 +155,9 @@ export default function KuhinjskiPopis() {
       
       if (result.success) {
         alert('Popis uspešno sačuvan!');
-        // Očisti state i localStorage
+        // Očisti state
         setSelectedItems({});
         setSastavio('');
-        clearStorage();
         setCurrentView('categories');
         setSelectedCategory(null);
       } else {
@@ -210,6 +165,15 @@ export default function KuhinjskiPopis() {
       }
     } catch (error) {
       alert('Greška pri čuvanju: ' + error.message);
+    }
+  };
+
+  // Funkcija za brisanje trenutnog popisa
+  const clearCurrentList = () => {
+    const confirmClear = confirm('Da li ste sigurni da želite da obrišete trenutni popis?');
+    if (confirmClear) {
+      setSelectedItems({});
+      setSastavio('');
     }
   };
 
@@ -361,12 +325,20 @@ export default function KuhinjskiPopis() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={saveList}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                  >
-                    Sačuvaj
-                  </button>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={clearCurrentList}
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={saveList}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                    >
+                      Sačuvaj
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"
@@ -399,6 +371,13 @@ export default function KuhinjskiPopis() {
                     onChange={(e) => setSastavio(e.target.value)}
                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
+                  <button
+                    onClick={clearCurrentList}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Obriši</span>
+                  </button>
                   <button
                     onClick={saveList}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
@@ -598,12 +577,20 @@ export default function KuhinjskiPopis() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={saveList}
-                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
-                  >
-                    Sačuvaj
-                  </button>
+                  <div className="flex space-x-2">
+                    <button
+                      onClick={clearCurrentList}
+                      className="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded-lg text-sm font-medium"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={saveList}
+                      className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
+                    >
+                      Sačuvaj
+                    </button>
+                  </div>
                 </div>
                 <input
                   type="text"
@@ -636,6 +623,13 @@ export default function KuhinjskiPopis() {
                     onChange={(e) => setSastavio(e.target.value)}
                     className="px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   />
+                  <button
+                    onClick={clearCurrentList}
+                    className="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 transition-colors"
+                  >
+                    <X className="w-4 h-4" />
+                    <span>Obriši</span>
+                  </button>
                   <button
                     onClick={saveList}
                     className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg flex items-center space-x-2 transition-colors"
