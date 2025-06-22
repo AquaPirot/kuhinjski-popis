@@ -1,4 +1,4 @@
-// src/utils/database.js - Production Ready with Fixes
+// src/utils/database.js - COMPLETE VERSION with JSON.parse fix
 import mysql from 'mysql2/promise';
 
 const dbConfig = {
@@ -9,12 +9,11 @@ const dbConfig = {
   database: process.env.DB_NAME || 'aggroup_kuhinja_popis',
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   connectTimeout: 60000,
-  acquireTimeout: 60000,
-  timeout: 60000,
   charset: 'utf8mb4',
   timezone: '+00:00'
 };
 
+// Connection pool za bolje performanse
 let pool;
 
 const createPool = () => {
@@ -23,24 +22,24 @@ const createPool = () => {
       ...dbConfig,
       waitForConnections: true,
       connectionLimit: 10,
-      queueLimit: 0,
-      acquireTimeout: 60000,
-      timeout: 60000,
-      reconnect: true,
-      idleTimeout: 300000,
-      maxIdle: 10,
-      enableKeepAlive: true,
-      keepAliveInitialDelay: 0
+      queueLimit: 0
     });
   }
   return pool;
 };
 
+// Glavna funkcija za izvršavanje upita
 export const executeQuery = async (query, params = []) => {
   const connection = createPool();
-
+  
   try {
+    console.log('Executing query:', query);
+    console.log('With params:', params);
+    
     const [results] = await connection.execute(query, params);
+    
+    console.log('Query results count:', results?.length || 0);
+    
     return results;
   } catch (error) {
     console.error('Database query error:', error);
@@ -50,6 +49,7 @@ export const executeQuery = async (query, params = []) => {
   }
 };
 
+// Test konekcije
 export const testConnection = async () => {
   try {
     const results = await executeQuery('SELECT 1 as test, NOW() as server_time');
@@ -61,6 +61,7 @@ export const testConnection = async () => {
   }
 };
 
+// Helper funkcije za česte operacije
 export const insertItem = async (name, category, unit) => {
   const query = 'INSERT INTO namirnice (name, category, unit) VALUES (?, ?, ?)';
   const result = await executeQuery(query, [name, category, unit]);
@@ -89,39 +90,124 @@ export const deleteItems = async (ids) => {
   return await executeQuery(query, ids);
 };
 
-export const savePopis = async (datum, sastavio, items) => {
-  const query = 'INSERT INTO popisi (datum, sastavio, items_json) VALUES (?, ?, ?)';
-  const itemsJson = JSON.stringify(items);
+// FIXED savePopis function with better date handling
+export const savePopis = async (datum, sastavio, items, srpski_datum = null) => {
+  console.log('savePopis called with:', { datum, sastavio, itemsCount: items?.length, srpski_datum });
+  
+  try {
+    // Validacija ulaznih podataka
+    if (!datum || !sastavio || !Array.isArray(items) || items.length === 0) {
+      throw new Error('Invalid input data: missing datum, sastavio, or empty items array');
+    }
 
-  console.log('💾 Upisujem popis:', { datum, sastavio, itemsJson });
+    // Proveri svaki item
+    const validItems = items.filter(item => {
+      const isValid = item && 
+        typeof item.name === 'string' && item.name.trim() && 
+        typeof item.category === 'string' && item.category.trim() && 
+        typeof item.unit === 'string' && item.unit.trim() && 
+        typeof item.quantity === 'number' && item.quantity > 0;
+      
+      if (!isValid) {
+        console.log('Invalid item found:', item);
+      }
+      
+      return isValid;
+    });
 
-  const result = await executeQuery(query, [datum, sastavio, itemsJson]);
+    if (validItems.length === 0) {
+      throw new Error('No valid items found');
+    }
 
-  console.log('✅ Popis sačuvan sa ID:', result.insertId);
+    console.log('Valid items count:', validItems.length);
 
-  return result.insertId;
+    // Konvertuj items u JSON string
+    const itemsJson = JSON.stringify(validItems);
+    
+    console.log('About to insert:', { datum, sastavio, itemsJsonLength: itemsJson.length, srpski_datum });
+
+    // Try with srpski_datum first, fallback if column doesn't exist
+    let query, params;
+    
+    if (srpski_datum) {
+      query = 'INSERT INTO popisi (datum, sastavio, items_json, srpski_datum) VALUES (?, ?, ?, ?)';
+      params = [datum, sastavio.trim(), itemsJson, srpski_datum];
+    } else {
+      query = 'INSERT INTO popisi (datum, sastavio, items_json) VALUES (?, ?, ?)';
+      params = [datum, sastavio.trim(), itemsJson];
+    }
+    
+    try {
+      const result = await executeQuery(query, params);
+      
+      console.log('Insert result:', result);
+      
+      if (!result.insertId) {
+        throw new Error('Failed to get insert ID from database');
+      }
+      
+      return result.insertId;
+      
+    } catch (columnError) {
+      // If srpski_datum column doesn't exist, try without it
+      if (columnError.message.includes('srpski_datum') && srpski_datum) {
+        console.log('srpski_datum column not found, inserting without it');
+        query = 'INSERT INTO popisi (datum, sastavio, items_json) VALUES (?, ?, ?)';
+        params = [datum, sastavio.trim(), itemsJson];
+        
+        const result = await executeQuery(query, params);
+        
+        if (!result.insertId) {
+          throw new Error('Failed to get insert ID from database');
+        }
+        
+        return result.insertId;
+      } else {
+        throw columnError;
+      }
+    }
+    
+  } catch (error) {
+    console.error('savePopis error:', error);
+    throw error;
+  }
 };
 
+// FIXED getAllPopisi with your JSON.parse protection
 export const getAllPopisi = async () => {
-  const query = 'SELECT * FROM popisi ORDER BY datum DESC, id DESC';
-  const results = await executeQuery(query);
-
-  return results.map(popis => {
-    try {
-      return {
-        ...popis,
-        items: typeof popis.items_json === 'string'
-          ? JSON.parse(popis.items_json)
-          : []
-      };
-    } catch (error) {
-      console.error('Error parsing items JSON for popis:', popis.id, error);
-      return {
-        ...popis,
-        items: []
-      };
+  try {
+    const query = 'SELECT * FROM popisi ORDER BY datum DESC, timestamp DESC';
+    const results = await executeQuery(query);
+    
+    console.log('getAllPopisi raw results:', results?.length || 0);
+    
+    if (!results || results.length === 0) {
+      return [];
     }
-  });
+    
+    // VAŠE REŠENJE: Zaštićeni JSON.parse
+    const processedResults = results.map(popis => {
+      try {
+        return {
+          ...popis,
+          items: popis.items_json ? JSON.parse(popis.items_json) : [] // zaštita od praznog/null
+        };
+      } catch (parseError) {
+        console.error('JSON parse error for popis', popis.id, parseError.message);
+        return {
+          ...popis,
+          items: [] // fallback to empty array
+        };
+      }
+    });
+    
+    console.log('getAllPopisi processed results:', processedResults.length);
+    return processedResults;
+    
+  } catch (error) {
+    console.error('getAllPopisi error:', error);
+    throw error;
+  }
 };
 
 export const deletePopis = async (id) => {
@@ -129,6 +215,7 @@ export const deletePopis = async (id) => {
   return await executeQuery(query, [id]);
 };
 
+// Cleanup funkcija za graceful shutdown
 export const closeConnections = async () => {
   if (pool) {
     await pool.end();

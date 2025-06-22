@@ -1,5 +1,6 @@
-// src/components/KuhinjskiPopis.js - Complete Fixed Responsive Version
-import React, { useState, useEffect } from 'react';
+
+// src/components/KuhinjskiPopis.js - COMPLETE FIXED VERSION with DATE FIX
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   ShoppingCart, 
   Plus, 
@@ -43,7 +44,7 @@ export default function KuhinjskiPopis() {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState(null);
-  const [currentView, setCurrentView] = useState('categories'); // categories, items, history
+  const [currentView, setCurrentView] = useState('categories');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedItems, setSelectedItems] = useState({});
   const [showAddModal, setShowAddModal] = useState(false);
@@ -51,6 +52,7 @@ export default function KuhinjskiPopis() {
   const [editingItem, setEditingItem] = useState(null);
   const [sastavio, setSastavio] = useState('');
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   // Kategorije koje postoje u bazi
   const [categories, setCategories] = useState([]);
@@ -93,26 +95,33 @@ export default function KuhinjskiPopis() {
     return acc;
   }, {});
 
-  const updateQuantity = (itemId, quantity) => {
+  const updateQuantity = useCallback((itemId, quantity) => {
     const numQuantity = parseFloat(quantity) || 0;
     
-    if (numQuantity <= 0) {
-      setSelectedItems(prev => {
-        const updated = { ...prev };
+    setSelectedItems(prev => {
+      const updated = { ...prev };
+      
+      if (numQuantity <= 0) {
         delete updated[itemId];
-        return updated;
-      });
-    } else {
-      const item = items.find(i => i.id === itemId);
-      setSelectedItems(prev => ({
-        ...prev,
-        [itemId]: { ...item, quantity: numQuantity }
-      }));
-    }
-  };
+      } else {
+        const item = items.find(i => i.id === itemId);
+        if (item) {
+          updated[itemId] = { 
+            ...item, 
+            quantity: numQuantity 
+          };
+        }
+      }
+      
+      console.log('Updated selectedItems:', updated); // Debug log
+      return updated;
+    });
+  }, [items]);
 
   const saveList = async () => {
     const selectedItemsList = Object.values(selectedItems).filter(Boolean);
+    
+    console.log('Attempting to save:', { selectedItemsList, sastavio }); // Debug log
     
     if (selectedItemsList.length === 0) {
       alert('Izaberite bar jedan artikal!');
@@ -128,30 +137,62 @@ export default function KuhinjskiPopis() {
     const confirmSave = confirm(`Da li želite da sačuvate popis sa ${selectedItemsList.length} artikala?\n\nSastavio: ${sastavio.trim()}`);
     if (!confirmSave) return;
 
-    // Srpski datum i vreme
-    const now = new Date();
-    const serbianDateTime = now.toLocaleString('sr-RS', {
-      timeZone: 'Europe/Belgrade',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit'
-    });
-
+    setSaving(true);
+    
     try {
+      // ISPRAVKA: Koristimo standardni MySQL DATETIME format
+      const now = new Date();
+      
+      // Konvertuj u Belgrade timezone i formatuj za MySQL
+      const belgradeTime = new Date(now.getTime() + (now.getTimezoneOffset() * 60000) + (60 * 60000)); // UTC+1
+      
+      // Format: YYYY-MM-DD HH:MM:SS (MySQL DATETIME)
+      const year = belgradeTime.getFullYear();
+      const month = String(belgradeTime.getMonth() + 1).padStart(2, '0');
+      const day = String(belgradeTime.getDate()).padStart(2, '0');
+      const hours = String(belgradeTime.getHours()).padStart(2, '0');
+      const minutes = String(belgradeTime.getMinutes()).padStart(2, '0');
+      const seconds = String(belgradeTime.getSeconds()).padStart(2, '0');
+      
+      const mysqlDateTime = `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+      
+      console.log('MySQL DateTime format:', mysqlDateTime); // Debug log
+
+      // Takođe kreiraj čitljiv srpski format za prikaz
+      const srpskiDatum = belgradeTime.toLocaleString('sr-RS', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+
+      console.log('Srpski format za prikaz:', srpskiDatum); // Debug log
+
+      console.log('Sending to API:', {
+        datum: mysqlDateTime,
+        srpski_datum: srpskiDatum,
+        sastavio: sastavio.trim(),
+        items: selectedItemsList
+      }); // Debug log
+
       const response = await fetch('/api/popisi/save', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          datum: serbianDateTime,
+          datum: mysqlDateTime,           // MySQL format
+          srpski_datum: srpskiDatum,      // Srpski format za prikaz
           sastavio: sastavio.trim(),
           items: selectedItemsList
         })
       });
 
       const result = await response.json();
+      
+      console.log('API Response:', result); // Debug log
       
       if (result.success) {
         alert('Popis uspešno sačuvan!');
@@ -161,10 +202,14 @@ export default function KuhinjskiPopis() {
         setCurrentView('categories');
         setSelectedCategory(null);
       } else {
-        alert('Greška pri čuvanju: ' + result.error);
+        console.error('Save failed:', result);
+        alert('Greška pri čuvanju: ' + (result.error || 'Nepoznata greška'));
       }
     } catch (error) {
+      console.error('Save error:', error);
       alert('Greška pri čuvanju: ' + error.message);
+    } finally {
+      setSaving(false);
     }
   };
 

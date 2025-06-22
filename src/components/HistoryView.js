@@ -1,4 +1,4 @@
-// src/components/HistoryView.js - Modern Design
+// src/components/HistoryView.js - CLEAN COMPLETE VERSION
 import React, { useState, useEffect } from 'react';
 import { 
   ArrowLeft, 
@@ -6,19 +6,20 @@ import {
   User, 
   FileText, 
   Trash2, 
-  Eye,
   Download,
   Search,
-  Filter,
   Clock,
   Package,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 
 export default function HistoryView({ onBack }) {
   const [popisi, setPopisi] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedPopis, setExpandedPopis] = useState(null);
 
@@ -29,14 +30,33 @@ export default function HistoryView({ onBack }) {
   const fetchPopisi = async () => {
     try {
       setLoading(true);
+      setError(null);
+      
+      console.log('Fetching popisi...');
+      
       const response = await fetch('/api/popisi/list');
+      
+      console.log('Response status:', response.status);
+      console.log('Response ok:', response.ok);
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
       const result = await response.json();
       
+      console.log('API Response:', result);
+      
       if (result.success) {
-        setPopisi(result.data);
+        console.log('Popisi data:', result.data?.length || 0, 'items');
+        setPopisi(result.data || []);
+      } else {
+        console.error('API returned error:', result.error);
+        setError(result.error || 'Nepoznata greška pri učitavanju popisa');
       }
     } catch (error) {
       console.error('Error fetching popisi:', error);
+      setError('Greška pri učitavanju popisa: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -68,9 +88,25 @@ export default function HistoryView({ onBack }) {
   };
 
   const formatDate = (dateString) => {
+    if (!dateString || dateString === '0000-00-00 00:00:00') {
+      return 'Nepoznat datum';
+    }
+    
     try {
-      // Pokušavamo da parsiramo srpski format
-      const date = new Date(dateString);
+      let date;
+      
+      if (dateString.match(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/)) {
+        date = new Date(dateString.replace(' ', 'T') + 'Z');
+      } else if (dateString.includes('T')) {
+        date = new Date(dateString);
+      } else {
+        date = new Date(dateString);
+      }
+      
+      if (isNaN(date.getTime())) {
+        return dateString;
+      }
+      
       return date.toLocaleString('sr-RS', {
         timeZone: 'Europe/Belgrade',
         year: 'numeric',
@@ -80,46 +116,52 @@ export default function HistoryView({ onBack }) {
         minute: '2-digit'
       });
     } catch (error) {
-      return dateString; // Fallback na originalni string
+      console.error('Date parsing error:', error, 'for date:', dateString);
+      return dateString;
     }
   };
 
   const exportToPDF = (popis) => {
-    // Kreiraj jednostavan tekst za download
+    const items = popis.items || [];
+    
     const content = `
 KUHINJSKI POPIS
 ================
 
-Datum: ${formatDate(popis.datum)}
+Datum: ${popis.srpski_datum || formatDate(popis.datum)}
 Sastavio: ${popis.sastavio}
 
 ARTIKLI:
 --------
-${popis.items.map((item, index) => 
-  `${index + 1}. ${item.name} - ${item.quantity} ${item.unit}`
+${items.map((item, index) => 
+  `${index + 1}. ${item.name || 'Nepoznat artikal'} - ${item.quantity || 0} ${item.unit || ''}`
 ).join('\n')}
 
-Ukupno artikala: ${popis.items.length}
-Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
+Ukupno artikala: ${items.length}
+Ukupna količina: ${items.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0).toFixed(2)}
     `.trim();
 
     const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `popis_${popis.datum.replace(/[\/\s:]/g, '_')}.txt`;
+    a.download = `popis_${popis.id}_${(popis.sastavio || 'nepoznato').replace(/[^a-zA-Z0-9]/g, '_')}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
   };
 
-  // Filter popise po search term-u
-  const filteredPopisi = popisi.filter(popis => 
-    popis.sastavio.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    popis.datum.includes(searchTerm) ||
-    popis.items.some(item => item.name.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredPopisi = popisi.filter(popis => {
+    const searchLower = searchTerm.toLowerCase();
+    const items = popis.items || [];
+    
+    return (
+      (popis.sastavio || '').toLowerCase().includes(searchLower) ||
+      (popis.srpski_datum || formatDate(popis.datum) || '').includes(searchTerm) ||
+      items.some(item => (item.name || '').toLowerCase().includes(searchLower))
+    );
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-50 to-pink-100">
@@ -141,12 +183,22 @@ Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
                 </div>
                 <div>
                   <h1 className="text-2xl font-bold text-gray-900">Istorija Popisa</h1>
-                  <p className="text-sm text-gray-500">{filteredPopisi.length} sačuvanih popisa</p>
+                  <p className="text-sm text-gray-500">
+                    {loading ? 'Učitavanje...' : `${filteredPopisi.length} sačuvanih popisa`}
+                  </p>
                 </div>
               </div>
             </div>
             
             <div className="flex items-center space-x-2">
+              <button
+                onClick={fetchPopisi}
+                className="p-2 hover:bg-gray-100 rounded-lg transition-colors"
+                title="Osvezi listu"
+              >
+                <RefreshCw className={`w-4 h-4 text-gray-600 ${loading ? 'animate-spin' : ''}`} />
+              </button>
+              
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <input
@@ -164,23 +216,56 @@ Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
 
       {/* Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Debug info */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="bg-yellow-100 border-l-4 border-yellow-500 p-4 mb-6">
+            <h4 className="font-semibold text-yellow-800">Debug Info:</h4>
+            <p className="text-sm text-yellow-700">
+              Loading: {loading.toString()}, 
+              Error: {error || 'none'}, 
+              Total popisi: {popisi.length}, 
+              Filtered: {filteredPopisi.length}
+            </p>
+          </div>
+        )}
+
         {loading ? (
           <div className="text-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-500 mx-auto"></div>
             <p className="mt-4 text-gray-600">Učitavanje istorije...</p>
           </div>
+        ) : error ? (
+          <div className="text-center py-12 bg-white rounded-xl shadow-lg">
+            <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">Greška pri učitavanju</h3>
+            <p className="text-red-600 mb-4">{error}</p>
+            <button
+              onClick={fetchPopisi}
+              className="bg-purple-500 hover:bg-purple-600 text-white px-4 py-2 rounded-lg flex items-center space-x-2 mx-auto"
+            >
+              <RefreshCw className="w-4 h-4" />
+              <span>Pokušaj ponovo</span>
+            </button>
+          </div>
         ) : filteredPopisi.length === 0 ? (
           <div className="text-center py-12 bg-white rounded-xl shadow-lg">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-gray-900 mb-2">Nema sačuvanih popisa</h3>
-            <p className="text-gray-500">Kada napravite i sačuvate popis, prikazaće se ovde.</p>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">
+              {popisi.length === 0 ? 'Nema sačuvanih popisa' : 'Nema rezultata pretrage'}
+            </h3>
+            <p className="text-gray-500">
+              {popisi.length === 0 
+                ? 'Kada napravite i sačuvate popis, prikazaće se ovde.' 
+                : 'Pokušajte sa drugim terminom pretrage.'}
+            </p>
           </div>
         ) : (
           <div className="space-y-4">
             {filteredPopisi.map(popis => {
               const isExpanded = expandedPopis === popis.id;
-              const totalItems = popis.items.length;
-              const totalQuantity = popis.items.reduce((sum, item) => sum + item.quantity, 0);
+              const items = popis.items || [];
+              const totalItems = items.length;
+              const totalQuantity = items.reduce((sum, item) => sum + (parseFloat(item.quantity) || 0), 0);
               
               return (
                 <div key={popis.id} className="bg-white rounded-xl shadow-lg overflow-hidden transition-all duration-200 hover:shadow-xl">
@@ -194,7 +279,9 @@ Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
                         
                         <div>
                           <div className="flex items-center space-x-3 mb-1">
-                            <h3 className="text-lg font-semibold text-gray-900">{formatDate(popis.datum)}</h3>
+                            <h3 className="text-lg font-semibold text-gray-900">
+                              {popis.srpski_datum || formatDate(popis.datum)}
+                            </h3>
                             <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs rounded-full font-medium">
                               {totalItems} artikala
                             </span>
@@ -207,7 +294,7 @@ Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
                             </div>
                             <div className="flex items-center space-x-1">
                               <Package className="w-4 h-4" />
-                              <span>Ukupno: {totalQuantity} kom</span>
+                              <span>Ukupno: {totalQuantity.toFixed(2)}</span>
                             </div>
                           </div>
                         </div>
@@ -249,23 +336,27 @@ Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
                         <span>Detaljan popis artikala</span>
                       </h4>
                       
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {popis.items.map((item, index) => (
-                          <div key={index} className="bg-white rounded-lg p-3 shadow-sm border border-gray-200">
-                            <div className="flex items-center justify-between">
-                              <div className="flex-1">
-                                <h5 className="font-medium text-gray-900 text-sm">{item.name}</h5>
-                                <p className="text-xs text-gray-500">{item.category}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-semibold text-purple-600">
-                                  {item.quantity} {item.unit}
-                                </p>
+                      {items.length === 0 ? (
+                        <p className="text-gray-500 italic">Nema artikala u ovom popisu.</p>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          {items.map((item, index) => (
+                            <div key={index} className="bg-white rounded-lg p-3 shadow-sm border border-gray-200">
+                              <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                  <h5 className="font-medium text-gray-900 text-sm">{item.name || 'Nepoznat artikal'}</h5>
+                                  <p className="text-xs text-gray-500">{item.category || 'Nepoznata kategorija'}</p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="font-semibold text-purple-600">
+                                    {item.quantity || 0} {item.unit || ''}
+                                  </p>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
-                      </div>
+                          ))}
+                        </div>
+                      )}
                       
                       {/* Summary */}
                       <div className="mt-6 pt-4 border-t border-gray-200">
@@ -277,13 +368,13 @@ Ukupna količina: ${popis.items.reduce((sum, item) => sum + item.quantity, 0)}
                             </div>
                             <div className="flex items-center space-x-2">
                               <div className="w-3 h-3 bg-pink-500 rounded-full"></div>
-                              <span className="text-gray-600">Ukupna količina: <span className="font-semibold">{totalQuantity} kom</span></span>
+                              <span className="text-gray-600">Ukupna količina: <span className="font-semibold">{totalQuantity.toFixed(2)}</span></span>
                             </div>
                           </div>
                           
                           <div className="text-gray-500">
                             <Clock className="w-4 h-4 inline mr-1" />
-                            {formatDate(popis.datum)}
+                            {popis.srpski_datum || formatDate(popis.datum)}
                           </div>
                         </div>
                       </div>
