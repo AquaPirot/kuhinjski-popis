@@ -1,6 +1,6 @@
-// src/components/AddItemModal.js - Modern Design
 import React, { useState } from 'react';
-import { Plus, X, Package, Tag, Scale } from 'lucide-react';
+import { Plus, X, Package, Tag, Scale, AlertCircle } from 'lucide-react';
+import { addItem } from '@/utils/storage';
 
 const UNIT_OPTIONS = [
   { value: 'kg', label: 'kg (kilogram)', icon: '⚖️' },
@@ -12,69 +12,49 @@ const UNIT_OPTIONS = [
   { value: 'konz', label: 'konz (konzerva)', icon: '🥫' },
   { value: 'teg', label: 'teg (tegla)', icon: '🫙' },
   { value: 'fla', label: 'fla (flaša)', icon: '🍶' },
-  { value: 'kut', label: 'kut (kutija)', icon: '📦' }
+  { value: 'kut', label: 'kut (kutija)', icon: '📦' },
 ];
 
 const PREDEFINED_CATEGORIES = [
   'Meso i riba',
-  'Mlečni proizvodi', 
+  'Mlečni proizvodi',
   'Voće i povrće',
   'Žitarice i brašno',
   'Konzervirana hrana',
   'Začini i dodaci',
   'Slatkiši',
-  'Napici'
+  'Napici',
 ];
 
-export default function AddItemModal({ show, onClose, categories, onUpdate }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    category: '',
-    unit: 'kg'
-  });
+export default function AddItemModal({ show, onClose, categories, onUpdate, showToast }) {
+  const [formData, setFormData] = useState({ name: '', category: '', unit: 'kg' });
   const [saving, setSaving] = useState(false);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
+  const [error, setError] = useState('');
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    
+    setError('');
+
     const finalCategory = showCustomCategory ? customCategory.trim() : formData.category;
-    
+
     if (!formData.name.trim() || !finalCategory) {
-      alert('Popunite naziv i kategoriju!');
+      setError('Popunite naziv i kategoriju!');
       return;
     }
 
     setSaving(true);
     try {
-      const response = await fetch('/api/namirnice/save', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: formData.name.trim(),
-          category: finalCategory,
-          unit: formData.unit
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        alert('Namirnica dodana u bazu!');
-        setFormData({ name: '', category: '', unit: 'kg' });
-        setShowCustomCategory(false);
-        setCustomCategory('');
-        onUpdate(); // Refresh lista
-        onClose();
-      } else {
-        alert(result.error || 'Greška pri dodavanju namirnice');
-      }
-    } catch (error) {
-      alert('Greška: ' + error.message);
-      console.error('Error adding item:', error);
+      addItem(formData.name, finalCategory, formData.unit);
+      showToast('Namirnica uspešno dodana!', 'success');
+      setFormData({ name: '', category: '', unit: 'kg' });
+      setShowCustomCategory(false);
+      setCustomCategory('');
+      onUpdate();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Greška pri dodavanju namirnice');
     } finally {
       setSaving(false);
     }
@@ -84,18 +64,17 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
     setFormData({ name: '', category: '', unit: 'kg' });
     setShowCustomCategory(false);
     setCustomCategory('');
+    setError('');
     onClose();
   };
 
   if (!show) return null;
 
-  // Kombinuj postojeće kategorije sa predefinisanim
   const allCategories = [...new Set([...PREDEFINED_CATEGORIES, ...categories])];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl transform transition-all">
-        {/* Header */}
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-fade-up">
         <div className="bg-gradient-to-r from-green-500 to-emerald-600 p-6 rounded-t-2xl">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
@@ -116,9 +95,14 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Naziv */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
               <Package className="w-4 h-4" />
@@ -134,13 +118,11 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
             />
           </div>
 
-          {/* Kategorija */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
               <Tag className="w-4 h-4" />
               <span>Kategorija</span>
             </label>
-            
             {!showCustomCategory ? (
               <div className="space-y-3">
                 <select
@@ -149,11 +131,10 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                 >
                   <option value="">Izaberite kategoriju</option>
-                  {allCategories.map(cat => (
+                  {allCategories.map((cat) => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                
                 <button
                   type="button"
                   onClick={() => setShowCustomCategory(true)}
@@ -171,13 +152,9 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
                   onChange={(e) => setCustomCategory(e.target.value)}
                   className="w-full px-4 py-3 border border-green-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
                 />
-                
                 <button
                   type="button"
-                  onClick={() => {
-                    setShowCustomCategory(false);
-                    setCustomCategory('');
-                  }}
+                  onClick={() => { setShowCustomCategory(false); setCustomCategory(''); }}
                   className="text-sm text-gray-600 hover:text-gray-700 font-medium"
                 >
                   ← Vrati se na postojeće kategorije
@@ -186,7 +163,6 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
             )}
           </div>
 
-          {/* Jedinica mere */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
               <Scale className="w-4 h-4" />
@@ -197,7 +173,7 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
               onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all"
             >
-              {UNIT_OPTIONS.map(unit => (
+              {UNIT_OPTIONS.map((unit) => (
                 <option key={unit.value} value={unit.value}>
                   {unit.icon} {unit.label}
                 </option>
@@ -205,24 +181,22 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
             </select>
           </div>
 
-          {/* Preview */}
           {formData.name && (showCustomCategory ? customCategory : formData.category) && (
             <div className="bg-gray-50 rounded-xl p-4 space-y-2">
               <h4 className="text-sm font-medium text-gray-700">Pregled:</h4>
               <div className="text-lg font-semibold text-gray-900">{formData.name}</div>
-              <div className="flex items-center space-x-4 text-sm text-gray-600">
+              <div className="flex items-center space-x-4 text-sm text-gray-600 flex-wrap gap-2">
                 <span className="bg-green-100 text-green-800 px-2 py-1 rounded-lg">
                   {showCustomCategory ? customCategory : formData.category}
                 </span>
                 <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-lg">
-                  {UNIT_OPTIONS.find(u => u.value === formData.unit)?.label}
+                  {UNIT_OPTIONS.find((u) => u.value === formData.unit)?.label}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Buttons */}
-          <div className="flex space-x-3 pt-4">
+          <div className="flex space-x-3 pt-2">
             <button
               type="button"
               onClick={handleClose}
@@ -232,12 +206,16 @@ export default function AddItemModal({ show, onClose, categories, onUpdate }) {
             </button>
             <button
               type="submit"
-              disabled={saving || !formData.name.trim() || !(showCustomCategory ? customCategory.trim() : formData.category)}
+              disabled={
+                saving ||
+                !formData.name.trim() ||
+                !(showCustomCategory ? customCategory.trim() : formData.category)
+              }
               className="flex-1 bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white py-3 px-4 rounded-xl transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {saving ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Čuvam...</span>
                 </>
               ) : (

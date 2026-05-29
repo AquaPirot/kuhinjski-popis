@@ -1,6 +1,6 @@
-// src/components/EditItemModal.js - Modern Design
 import React, { useState, useEffect } from 'react';
-import { Edit3, Save, X, Package, Tag, Scale, Trash2 } from 'lucide-react';
+import { Edit3, Save, X, Package, Tag, Scale, Trash2, AlertCircle } from 'lucide-react';
+import { updateItem, deleteItem } from '@/utils/storage';
 
 const UNIT_OPTIONS = [
   { value: 'kg', label: 'kg (kilogram)', icon: '⚖️' },
@@ -12,117 +12,74 @@ const UNIT_OPTIONS = [
   { value: 'konz', label: 'konz (konzerva)', icon: '🥫' },
   { value: 'teg', label: 'teg (tegla)', icon: '🫙' },
   { value: 'fla', label: 'fla (flaša)', icon: '🍶' },
-  { value: 'kut', label: 'kut (kutija)', icon: '📦' }
+  { value: 'kut', label: 'kut (kutija)', icon: '📦' },
 ];
 
 const PREDEFINED_CATEGORIES = [
   'Meso i riba',
-  'Mlečni proizvodi', 
+  'Mlečni proizvodi',
   'Voće i povrće',
   'Žitarice i brašno',
   'Konzervirana hrana',
   'Začini i dodaci',
   'Slatkiši',
-  'Napici'
+  'Napici',
 ];
 
-export default function EditItemModal({ show, onClose, item, categories, onUpdate }) {
-  const [formData, setFormData] = useState({
-    name: '',
-    category: '',
-    unit: 'kg'
-  });
+export default function EditItemModal({ show, onClose, item, categories, onUpdate, showToast }) {
+  const [formData, setFormData] = useState({ name: '', category: '', unit: 'kg' });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [showCustomCategory, setShowCustomCategory] = useState(false);
   const [customCategory, setCustomCategory] = useState('');
+  const [error, setError] = useState('');
 
   useEffect(() => {
     if (item) {
-      setFormData({
-        name: item.name || '',
-        category: item.category || '',
-        unit: item.unit || 'kg'
-      });
-      
-      // Proverava da li je kategorija custom (nije u predefinisanim)
-      const allCategories = [...new Set([...PREDEFINED_CATEGORIES, ...categories])];
-      if (item.category && !allCategories.includes(item.category)) {
+      setFormData({ name: item.name || '', category: item.category || '', unit: item.unit || 'kg' });
+      const allCats = [...new Set([...PREDEFINED_CATEGORIES, ...categories])];
+      if (item.category && !allCats.includes(item.category)) {
         setShowCustomCategory(true);
         setCustomCategory(item.category);
+      } else {
+        setShowCustomCategory(false);
+        setCustomCategory('');
       }
+      setError('');
     }
   }, [item, categories]);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
-    
+    setError('');
     const finalCategory = showCustomCategory ? customCategory.trim() : formData.category;
-    
     if (!formData.name.trim() || !finalCategory) {
-      alert('Popunite naziv i kategoriju!');
+      setError('Popunite naziv i kategoriju!');
       return;
     }
-
     setSaving(true);
     try {
-      const response = await fetch('/api/namirnice/update', {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          id: item.id,
-          name: formData.name.trim(),
-          category: finalCategory,
-          unit: formData.unit
-        }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        alert('Artikal uspešno ažuriran!');
-        onUpdate(); // Refresh lista
-        handleClose();
-      } else {
-        alert(result.error || 'Greška pri ažuriranju artikla');
-      }
-    } catch (error) {
-      alert('Greška: ' + error.message);
-      console.error('Error updating item:', error);
+      updateItem(item.id, formData.name, finalCategory, formData.unit);
+      showToast('Artikal uspešno ažuriran!', 'success');
+      onUpdate();
+      handleClose();
+    } catch (err) {
+      setError(err.message || 'Greška pri ažuriranju artikla');
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!confirm(`Da li ste sigurni da želite da obrišete "${item.name}"?`)) {
-      return;
-    }
-
+  const handleDelete = () => {
+    if (!confirm(`Da li ste sigurni da želite da obrišete "${item.name}"?`)) return;
     setDeleting(true);
     try {
-      const response = await fetch('/api/namirnice/delete', {
-        method: 'DELETE',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ id: item.id }),
-      });
-
-      const result = await response.json();
-
-      if (result.success) {
-        alert('Artikal uspešno obrisan!');
-        onUpdate(); // Refresh lista
-        handleClose();
-      } else {
-        alert(result.error || 'Greška pri brisanju artikla');
-      }
-    } catch (error) {
-      alert('Greška: ' + error.message);
-      console.error('Error deleting item:', error);
+      deleteItem(item.id);
+      showToast('Artikal uspešno obrisan!', 'success');
+      onUpdate();
+      handleClose();
+    } catch (err) {
+      setError(err.message || 'Greška pri brisanju artikla');
     } finally {
       setDeleting(false);
     }
@@ -132,18 +89,17 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
     setFormData({ name: '', category: '', unit: 'kg' });
     setShowCustomCategory(false);
     setCustomCategory('');
+    setError('');
     onClose();
   };
 
   if (!show || !item) return null;
 
-  // Kombinuj postojeće kategorije sa predefinisanim
   const allCategories = [...new Set([...PREDEFINED_CATEGORIES, ...categories])];
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl transform transition-all">
-        {/* Header */}
+      <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl animate-fade-up">
         <div className="bg-gradient-to-r from-blue-500 to-purple-600 p-6 rounded-t-2xl">
           <div className="flex justify-between items-center">
             <div className="flex items-center space-x-3">
@@ -164,9 +120,14 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
           </div>
         </div>
 
-        {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Naziv */}
+        <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {error && (
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl p-3 text-red-700 text-sm">
+              <AlertCircle className="w-4 h-4 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
               <Package className="w-4 h-4" />
@@ -181,13 +142,11 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
             />
           </div>
 
-          {/* Kategorija */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
               <Tag className="w-4 h-4" />
               <span>Kategorija</span>
             </label>
-            
             {!showCustomCategory ? (
               <div className="space-y-3">
                 <select
@@ -196,11 +155,10 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 >
                   <option value="">Izaberite kategoriju</option>
-                  {allCategories.map(cat => (
+                  {allCategories.map((cat) => (
                     <option key={cat} value={cat}>{cat}</option>
                   ))}
                 </select>
-                
                 <button
                   type="button"
                   onClick={() => setShowCustomCategory(true)}
@@ -218,7 +176,6 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
                   onChange={(e) => setCustomCategory(e.target.value)}
                   className="w-full px-4 py-3 border border-blue-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
                 />
-                
                 <button
                   type="button"
                   onClick={() => {
@@ -234,7 +191,6 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
             )}
           </div>
 
-          {/* Jedinica mere */}
           <div className="space-y-2">
             <label className="flex items-center space-x-2 text-sm font-medium text-gray-700">
               <Scale className="w-4 h-4" />
@@ -245,7 +201,7 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
               onChange={(e) => setFormData({ ...formData, unit: e.target.value })}
               className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
             >
-              {UNIT_OPTIONS.map(unit => (
+              {UNIT_OPTIONS.map((unit) => (
                 <option key={unit.value} value={unit.value}>
                   {unit.icon} {unit.label}
                 </option>
@@ -253,24 +209,22 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
             </select>
           </div>
 
-          {/* Preview */}
           {formData.name && (showCustomCategory ? customCategory : formData.category) && (
             <div className="bg-gray-50 rounded-xl p-4 space-y-2">
               <h4 className="text-sm font-medium text-gray-700">Pregled izmena:</h4>
               <div className="text-lg font-semibold text-gray-900">{formData.name}</div>
-              <div className="flex items-center space-x-4 text-sm text-gray-600">
+              <div className="flex items-center space-x-3 text-sm text-gray-600 flex-wrap gap-2">
                 <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-lg">
                   {showCustomCategory ? customCategory : formData.category}
                 </span>
                 <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-lg">
-                  {UNIT_OPTIONS.find(u => u.value === formData.unit)?.label}
+                  {UNIT_OPTIONS.find((u) => u.value === formData.unit)?.label}
                 </span>
               </div>
             </div>
           )}
 
-          {/* Buttons */}
-          <div className="flex space-x-3 pt-4">
+          <div className="flex space-x-3 pt-2">
             <button
               type="button"
               onClick={handleDelete}
@@ -278,18 +232,12 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
               className="bg-red-100 hover:bg-red-200 text-red-700 py-3 px-4 rounded-xl transition-colors font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {deleting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin"></div>
-                  <span>Brišem...</span>
-                </>
+                <div className="w-4 h-4 border-2 border-red-700 border-t-transparent rounded-full animate-spin" />
               ) : (
-                <>
-                  <Trash2 className="w-4 h-4" />
-                  <span>Obriši</span>
-                </>
+                <Trash2 className="w-4 h-4" />
               )}
             </button>
-            
+
             <button
               type="button"
               onClick={handleClose}
@@ -297,21 +245,22 @@ export default function EditItemModal({ show, onClose, item, categories, onUpdat
             >
               Otkaži
             </button>
-            
+
             <button
               type="submit"
-              disabled={saving || !formData.name.trim() || !(showCustomCategory ? customCategory.trim() : formData.category)}
+              disabled={
+                saving ||
+                !formData.name.trim() ||
+                !(showCustomCategory ? customCategory.trim() : formData.category)
+              }
               className="flex-1 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white py-3 px-4 rounded-xl transition-all font-medium disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
             >
               {saving ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Čuvam...</span>
-                </>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               ) : (
                 <>
                   <Save className="w-4 h-4" />
-                  <span>Sačuvaj izmene</span>
+                  <span>Sačuvaj</span>
                 </>
               )}
             </button>
